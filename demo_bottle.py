@@ -2,7 +2,12 @@ import os
 import cv2
 import torch
 import numpy as np
+import json
+import sqlite3                                                                                                                
 from torch.multiprocessing import Pool
+from bottle import route, run, template, request
+
+
 
 from darknet import Darknet19
 import utils.yolo as yolo_utils
@@ -11,8 +16,6 @@ from utils.timer import Timer
 import cfgs.config as cfg
 from oslo.config import cfg as cfg_oslo
 
-from bottle import route, run, template, request
-import json
 
 def check_path_create(target_dir):
     if not os.path.exists(target_dir):
@@ -66,10 +69,9 @@ CONF(default_config_files=['../webcam_img_capture/app.conf'])
 
 det_class = CONF.morestuff.category
 
-Dbwrite = True
-if Dbwrite:                                                                                                                       
-    import sqlite3                                                                                                                
-    conn = sqlite3.connect('../webcam_img_capture/yolo.db')
+                                                                                                                   
+
+conn = sqlite3.connect('../webcam_img_capture/yolo.db')
 
 @route('/home', method='POST')
 def home():
@@ -77,10 +79,11 @@ def home():
     body = json.loads(data)
     im_path = body['dir_path']
     #im_path = 'demo'
-    im_fnames = sorted((fname for fname in os.listdir(im_path) if os.path.splitext(fname)[-1] == '.jpg'))
+    im_fnames = sorted((fname for fname in os.listdir(im_path)\
+                        if os.path.splitext(fname)[-1] == '.jpg'))
     im_fnames = (os.path.join(im_path, fname) for fname in im_fnames)
 
-    min_record_tmp_list=[0]*len(det_class)
+    min_record_tmp_list = [0]*len(det_class)
 
     for i, (image, im_data, fname) in enumerate(pool.imap(preprocess, im_fnames, chunksize=1)):
         print(fname)
@@ -96,8 +99,9 @@ def home():
 
         # print bbox_pred.shape, iou_pred.shape, prob_pred.shape
 
-        bboxes, scores, cls_inds = yolo_utils.postprocess(bbox_pred, iou_pred, prob_pred, image.shape, cfg, thresh)
-        
+        bboxes, scores, cls_inds = yolo_utils.postprocess(bbox_pred, iou_pred,
+                                                          prob_pred, image.shape, cfg, thresh)
+
         im2show = yolo_utils.draw_detection(image, bboxes, scores, cls_inds, cfg)
 
 
@@ -105,11 +109,11 @@ def home():
         path_list = fname.split("/")
         filename = path_list.pop()
         time_folder = im_path
-        
+
         # wirte im2show to out dir
-        im_out_path = os.path.join(time_folder,"out")
+        im_out_path = os.path.join(time_folder, "out")
         check_path_create(im_out_path)
-        cv2.imwrite(os.path.join(im_out_path,filename), im2show)
+        cv2.imwrite(os.path.join(im_out_path, filename), im2show)
 
         tmp_list = ['0']*len(det_class)
         for i in cls_inds:
@@ -121,10 +125,9 @@ def home():
 
         tmp_list.insert(0, time_folder)
         tmp_list.insert(0, filename)
-        conn.execute("""insert into images_det (name,time_folder, \
-                CATE_1, CATE_2, CATE_3, CATE_4, CATE_5, CATE_6, \
-                CATE_7, CATE_8, CATE_9, CATE_10, CATE_11, CATE_12,CATE_13) \
-                values ("""+','.join(['?']*len(tmp_list))+""")""",tmp_list);  
+        conn.execute("""insert into images_det (name, time_folder, %s)\
+                        values (%s))"""%(",".join(det_class), ",".join(['?']*len(tmp_list))),
+                     tmp_list)
         conn.commit()
         total_time = t_total.toc()
 
@@ -136,17 +139,14 @@ def home():
             t_total.clear()
             t_det.clear()
 
-    tmp_list=[im_path]
+    tmp_list = [im_path]
     min_record_tmp_list = [str(i) for i in min_record_tmp_list]
     tmp_list.extend(min_record_tmp_list)
-    conn.execute("""insert into minute_det (time_folder, \
-            CATE_1, CATE_2, CATE_3, CATE_4, CATE_5, CATE_6, \
-            CATE_7, CATE_8, CATE_9, CATE_10, CATE_11, CATE_12,CATE_13) \
-            values ("""+','.join(['?']*len(tmp_list))+""")""",tmp_list);  
+    conn.execute("""insert into minute_det (time_folder, %s)
+                    values (%s)"""%(",".join(det_class), ",".join(['?']*len(tmp_list))),
+                 tmp_list)
     conn.commit()
-    
+
 
 run(host='localhost', port=5566, debug=True)
-
-
 
