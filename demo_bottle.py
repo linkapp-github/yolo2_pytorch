@@ -126,7 +126,7 @@ def home():
         tmp_list.insert(0, time_folder)
         tmp_list.insert(0, filename)
         conn.execute("""insert into images_det (name, time_folder, %s)\
-                        values (%s))"""%(",".join(det_class), ",".join(['?']*len(tmp_list))),
+                        values (%s)"""%(",".join(det_class), ",".join(['?']*len(tmp_list))),
                      tmp_list)
         conn.commit()
         total_time = t_total.toc()
